@@ -23,11 +23,11 @@ The goal of this project is to mitigate the risk of unauthorized physical access
 * **Encryption:** Custom AES-256 wrappers or VeraCrypt integration.
 
 ## 📅 Project Milestones
-* [cite_start]**Milestone 1:** Research on RSA implementation and NIST SP 800-88 sanitization standards [cite: 54-58].
-* [cite_start]**Milestone 2:** Environment setup and establishment of a stable BLE "Heartbeat" [cite: 58-62].
-* [cite_start]**Milestone 3:** Implementation of the RSA signing protocol [cite: 63-67].
-* [cite_start]**Milestone 4:** Integration of the "Self-Destruct" interrupt logic and secure file erasure [cite: 68-72].
-* [cite_start]**Milestone 5:** Final testing, range analysis, and technical report submission [cite: 73-77].
+* **Milestone 1:** Research on RSA implementation and NIST SP 800-88 sanitization standards [cite: 54-58].
+* **Milestone 2:** Environment setup and establishment of a stable BLE "Heartbeat" [cite: 58-62].
+* **Milestone 3:** Implementation of the RSA signing protocol [cite: 63-67].
+* **Milestone 4:** Integration of the "Self-Destruct" interrupt logic and secure file erasure [cite: 68-72].
+* **Milestone 5:** Final testing, range analysis, and technical report submission [cite: 73-77].
 
 ---
 *Developed as part of a Cybersecurity Capstone Project, 2026.*
