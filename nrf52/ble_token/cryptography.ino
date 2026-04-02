@@ -142,9 +142,9 @@ void setup_crypto() {
   ecc.end();
 }
 
-void output_public_key() {
-  uint8_t
-}
+// void output_public_key() {
+//   uint8_t
+// }
 
 // Helper function to print hex values cleanly
 void print_hex(uint8_t* buf, uint32_t len) {
