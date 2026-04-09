@@ -10,6 +10,8 @@
 - **BLE Connectivity**:
   - Device advertises as `SecurityToken_XIAO`.
   - BLE UART service fully functional for bi-directional communication.
+- **Serial Interface**:
+  - `GET_PUB` / `GET_PUBKEY`: Securely returns the public key via Serial for host-side registration.
 - **Cryptography (ECC)**:
   - Using `Adafruit_nRFCrypto` for hardware-accelerated ECC.
   - Automatic key generation (secp256r1) on first boot.

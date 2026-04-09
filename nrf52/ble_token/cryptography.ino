@@ -7,7 +7,7 @@ using namespace Adafruit_LittleFS_Namespace;
 
 // Filenames for storing keys
 const char* privKeyFile = "priv.key";
-const char* pubKeyFile  = "pub.key";
+const char* pubKeyFile = "pub.key";
 
 void setup_crypto() {
   // 1. Initialize the nRFCrypto hardware engine
@@ -33,27 +33,29 @@ void setup_crypto() {
 
   // 4. Declare key objects
   nRFCrypto_ECC_PrivateKey privKey;
-  nRFCrypto_ECC_PublicKey  pubKey;
+  nRFCrypto_ECC_PublicKey pubKey;
 
   // 5. Try to load keys from flash
   bool keysLoaded = false;
   if (InternalFS.exists(privKeyFile) && InternalFS.exists(pubKeyFile)) {
     Serial.println("Found existing keys in flash. Loading...");
-    
+
     uint8_t rawPriv[64];
     uint8_t rawPub[128];
-    
+
     File file = InternalFS.open(privKeyFile, FILE_O_READ);
     if (file) {
       uint32_t sz = file.size();
-      Serial.print("Opened private key file, size: "); Serial.println(sz);
+      Serial.print("Opened private key file, size: ");
+      Serial.println(sz);
       uint32_t privLen = file.read(rawPriv, sizeof(rawPriv));
       file.close();
 
       file = InternalFS.open(pubKeyFile, FILE_O_READ);
       if (file) {
         sz = file.size();
-        Serial.print("Opened public key file, size: "); Serial.println(sz);
+        Serial.print("Opened public key file, size: ");
+        Serial.println(sz);
         uint32_t pubLen = file.read(rawPub, sizeof(rawPub));
         file.close();
 
@@ -61,24 +63,30 @@ void setup_crypto() {
         privKey.begin(CRYS_ECPKI_DomainID_secp256r1);
         pubKey.begin(CRYS_ECPKI_DomainID_secp256r1);
 
-        Serial.print("Parsing private key (len="); Serial.print(privLen); Serial.println(")...");
+        Serial.print("Parsing private key (len=");
+        Serial.print(privLen);
+        Serial.println(")...");
         bool privOk = privKey.fromRaw(rawPriv, privLen);
-        
+
         // If 64-byte parse fails, try the last 32 bytes (the actual secret)
         if (!privOk && privLen == 64) {
           Serial.println("64-byte parse failed, trying last 32 bytes...");
           privOk = privKey.fromRaw(rawPriv + 32, 32);
         }
-        
-        Serial.print("Parsing public key (len="); Serial.print(pubLen); Serial.println(")...");
+
+        Serial.print("Parsing public key (len=");
+        Serial.print(pubLen);
+        Serial.println(")...");
         bool pubOk = pubKey.fromRaw(rawPub, pubLen);
 
         if (privOk && pubOk) {
           keysLoaded = true;
           Serial.println("Keys successfully loaded from flash.");
         } else {
-          Serial.print("Error: Failed to parse raw keys. PrivOK: "); Serial.print(privOk);
-          Serial.print(" PubOK: "); Serial.println(pubOk);
+          Serial.print("Error: Failed to parse raw keys. PrivOK: ");
+          Serial.print(privOk);
+          Serial.print(" PubOK: ");
+          Serial.println(pubOk);
         }
       }
     }
@@ -87,7 +95,7 @@ void setup_crypto() {
   // 6. Generate new keys if loading failed
   if (!keysLoaded) {
     Serial.println("Generating new ECC P256 key pair...");
-    
+
     privKey.begin(CRYS_ECPKI_DomainID_secp256r1);
     pubKey.begin(CRYS_ECPKI_DomainID_secp256r1);
 
@@ -105,7 +113,9 @@ void setup_crypto() {
       file.truncate(0);
       file.write(rawPriv, privLen);
       file.close();
-      Serial.print("Saved private key ("); Serial.print(privLen); Serial.println(" bytes)");
+      Serial.print("Saved private key (");
+      Serial.print(privLen);
+      Serial.println(" bytes)");
     }
 
     // Save Public Key to Flash
@@ -117,7 +127,9 @@ void setup_crypto() {
       file.truncate(0);
       file.write(rawPub, pubLen);
       file.close();
-      Serial.print("Saved public key ("); Serial.print(pubLen); Serial.println(" bytes)");
+      Serial.print("Saved public key (");
+      Serial.print(pubLen);
+      Serial.println(" bytes)");
     }
 
     Serial.println("New keys saved to flash.");
@@ -137,14 +149,42 @@ void setup_crypto() {
   Serial.print(pubLen);
   Serial.print(": ");
   print_hex(rawPub, pubLen);
-  
+
   // Clean up
   ecc.end();
 }
 
-// void output_public_key() {
-//   uint8_t
-// }
+void get_public_key() {
+  // We need to re-init to load the public key from flash
+  if (!nRFCrypto.begin()) return;
+  nRFCrypto_ECC ecc;
+  if (!ecc.begin()) return;
+  if (!InternalFS.begin()) return;
+
+  nRFCrypto_ECC_PublicKey pubKey;
+  if (InternalFS.exists(pubKeyFile)) {
+    uint8_t rawPub[128];
+    File file = InternalFS.open(pubKeyFile, FILE_O_READ);
+    if (file) {
+      uint32_t pubLen = file.read(rawPub, sizeof(rawPub));
+      file.close();
+
+      pubKey.begin(CRYS_ECPKI_DomainID_secp256r1);
+      if (pubKey.fromRaw(rawPub, pubLen)) {
+        // Output only the public key
+        Serial.print("PUBLIC_KEY: ");
+        print_hex(rawPub, pubLen);
+      } else {
+        Serial.println("ERROR: Failed to parse public key.");
+      }
+    } else {
+      Serial.println("ERROR: Could not open public key file.");
+    }
+  } else {
+    Serial.println("ERROR: Public key file not found.");
+  }
+  ecc.end();
+}
 
 // Helper function to print hex values cleanly
 void print_hex(uint8_t* buf, uint32_t len) {
