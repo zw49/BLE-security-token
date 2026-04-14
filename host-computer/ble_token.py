@@ -8,6 +8,7 @@ from serial.tools import list_ports
 from hashlib import sha256
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 
 
@@ -19,6 +20,9 @@ class Token:
         self.settings = self._load_settings()
         self.client = None
         self.is_authenticated = False
+        self._rx_buffer = bytearray()
+        self._pending_nonce = None
+        self._pending_ephemeral_key = None
 
     def _load_settings(self):
         if not os.path.exists(self.settings_path):
@@ -64,11 +68,48 @@ class Token:
                 return True
         except Exception as e:
             print(f"Connection failed: {e}")
+
         return False
 
     def _notification_handler(self, sender, data):
         """Callback for receiving data from the BLE token."""
-        print(f"Received: {data.hex()}")
+        self._rx_buffer.extend(data)
+        response = bytes(self._rx_buffer)
+        print(f"Received data: {response.hex()}", flush=True)
+
+
+        if len(self._rx_buffer) >= 32:
+            response = bytes(self._rx_buffer[:32])
+            self._rx_buffer = self._rx_buffer[32:]
+            if self._verify(response):
+                print("Authentication successful.", flush=True)
+                self.is_authenticated = True
+            else:
+                print("Authentication failed.", flush=True)
+                self.is_authenticated = False
+
+    def _verify(self, device_response):
+        """Verify the device's signed nonce response."""
+        if not self._pending_nonce or not self._pending_ephemeral_key:
+            print("No pending challenge to verify.")
+            return False
+
+        device_pub_hex = self.settings.get("public_key")
+        device_pub = ec.EllipticCurvePublicKey.from_encoded_point(
+            ec.SECP256R1(), bytes.fromhex(device_pub_hex)
+        )
+
+        shared_secret = self._pending_ephemeral_key.exchange(ec.ECDH(), device_pub)
+        print(f"Shared secret: {shared_secret.hex()}".upper(), flush=True)
+        expected = sha256(shared_secret + self._pending_nonce).digest()
+
+        self._pending_nonce = None
+        self._pending_ephemeral_key = None
+
+        print(f"Expected response: {expected.hex()}", flush=True)
+        print(f"Device response: {device_response.hex()}", flush=True)
+
+        return expected == device_response
 
     async def disconnect(self):
         """Disconnect from the BLE token and run disconnect command."""
@@ -115,31 +156,54 @@ class Token:
             return None
 
         nonce = os.urandom(16)
-        signed_nonce = self.sign_nonce(nonce)
+        ephemeral_key = ec.generate_private_key(ec.SECP256R1())
+        ephemeral_public_key = ephemeral_key.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
+
+        self._pending_nonce = nonce
+        self._pending_ephemeral_key = ephemeral_key
+
         uart_rx_uuid = self.settings.get("uart_rx_char_uuid")
-        await self.client.write_gatt_char(uart_rx_uuid, signed_nonce)
-        print(f"Nonce: {nonce.hex()}")
-        print(f"Signed nonce sent: {signed_nonce.hex()}")
+        self._rx_buffer.clear()
+        await self.client.write_gatt_char(uart_rx_uuid, nonce + ephemeral_public_key)
+        print(f"Nonce sent: {nonce.hex()}", flush=True)
+        print(f"Ephemeral public key sent: {ephemeral_public_key.hex()}", flush=True)
         return nonce
+    
+    async def generate_password(self, password, random_public_key):
+        if not self.client or not self.client.is_connected:
+            print("Not connected to device.")
+            return None
+        
+        if not self.is_authenticated:
+            print("Device not authenticated. Cannot generate password.")
+            return None
+    
+        hashed_password = sha256(password.encode()).digest()[:16]
+        uart_rx_uuid = self.settings.get("uart_rx_char_uuid")
+        await self.client.write_gatt_char(uart_rx_uuid, hashed_password + random_public_key)
+        response = bytes(self._rx_buffer)
+        return bytes(self._rx_buffer)
+
+
+        
+
 
     async def monitor_rssi(self):
         """Placeholder for RSSI monitoring logic."""
         if self.client and self.client.is_connected:
             # Note: Bleak's get_rssi() behavior varies by platform
             pass
-    
-    def sign_nonce(self, nonce):
-        """Sign the nonce using the stored public key (placeholder)."""
-        ephemeral_key = ec.generate_private_key(ec.SECP256R1())
-        signature = ephemeral_key.sign(nonce, ec.ECDSA(hashes.SHA256()))
-        return signature
+
 
 async def main():
     token = Token()
     token.get_public_key()
     await token.connect()
+
     while True:
-        await token.send_nonce()
+        if await token.send_nonce() == None:
+            print("Failed to send nonce. Device may be disconnected.")
+            await token.connect()
         await asyncio.sleep(10)
 
 if __name__ == "__main__":
