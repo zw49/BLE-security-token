@@ -34,5 +34,7 @@ void loop() {
     Serial.print(count);
     Serial.print(" bytes): ");
     print_hex(buf, count);
+
+    send_signed_nonce(buf, count);
   }
 }

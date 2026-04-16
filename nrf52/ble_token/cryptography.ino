@@ -186,6 +186,91 @@ void get_public_key() {
   ecc.end();
 }
 
+// Receive [16-byte nonce][65-byte ephemeral pubkey], do ECDH, hash, send back over BLE
+void send_signed_nonce(uint8_t* input, uint32_t inputLen) {
+  if (inputLen != 81) {
+    Serial.print("Error: Expected 81 bytes, got ");
+    Serial.println(inputLen);
+    return;
+  }
+
+  uint8_t* nonce = input;
+  uint8_t* ephemeralPubRaw = input + 16;
+
+  Serial.print("NONCE: ");
+  for (int i = 0; i < 16; i++) {
+    Serial.print(nonce[i], HEX);
+  }
+  Serial.println();
+
+  // Init crypto
+  if (!nRFCrypto.begin()) return;
+  nRFCrypto_ECC ecc;
+  if (!ecc.begin()) return;
+  if (!InternalFS.begin()) return;
+
+  // Load private key from flash
+  nRFCrypto_ECC_PrivateKey privKey;
+  privKey.begin(CRYS_ECPKI_DomainID_secp256r1);
+
+  uint8_t rawPriv[64];
+  File file = InternalFS.open(privKeyFile, FILE_O_READ);
+  if (!file) {
+    Serial.println("Error: Could not open private key file.");
+    ecc.end();
+    return;
+  }
+  uint32_t privLen = file.read(rawPriv, sizeof(rawPriv));
+  file.close();
+
+  if (!privKey.fromRaw(rawPriv, privLen)) {
+    if (privLen == 64) {
+      if (!privKey.fromRaw(rawPriv + 32, 32)) {
+        Serial.println("Error: Failed to parse private key.");
+        ecc.end();
+        return;
+      }
+    } else {
+      Serial.println("Error: Failed to parse private key.");
+      ecc.end();
+      return;
+    }
+  }
+
+  // Parse host's ephemeral public key
+  nRFCrypto_ECC_PublicKey ephemeralPub;
+  ephemeralPub.begin(CRYS_ECPKI_DomainID_secp256r1);
+  if (!ephemeralPub.fromRaw(ephemeralPubRaw, 65)) {
+    Serial.println("Error: Failed to parse ephemeral public key.");
+    ecc.end();
+    return;
+  }
+
+  // ECDH to derive shared secret
+  uint8_t sharedSecret[32];
+  uint32_t secretLen = nRFCrypto_ECC::SVDP_DH(privKey, ephemeralPub, sharedSecret, sizeof(sharedSecret));
+  ecc.end();
+
+  if (secretLen == 0) {
+    Serial.println("Error: ECDH failed.");
+    return;
+  }
+
+  // SHA-256(shared_secret + nonce)
+  nRFCrypto_Hash hash;
+  hash.begin(CRYS_HASH_SHA256_mode);
+  hash.update(sharedSecret, secretLen);
+  hash.update(nonce, 16);
+  uint8_t digest[32];
+  hash.end(digest);
+
+  Serial.print("Signed nonce: ");
+  print_hex(digest, 32);
+
+  // Send hash back over BLE
+  bleuart.write(digest, 32);
+}
+
 // Helper function to print hex values cleanly
 void print_hex(uint8_t* buf, uint32_t len) {
   for (uint32_t i = 0; i < len; i++) {

@@ -9,6 +9,7 @@ from hashlib import sha256
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 
 
@@ -20,9 +21,12 @@ class Token:
         self.settings = self._load_settings()
         self.client = None
         self.is_authenticated = False
+        self.should_run_commands = True
+        self.is_connected = False
         self._rx_buffer = bytearray()
         self._pending_nonce = None
         self._pending_ephemeral_key = None
+        self._generating_password = False
 
     def _load_settings(self):
         if not os.path.exists(self.settings_path):
@@ -58,13 +62,14 @@ class Token:
             await self.client.connect()
             if self.client.is_connected:
                 print(f"Connected to {address}!")
+                self.is_connected = True
 
                 uart_uuid = self.settings.get("uart_tx_char_uuid")
                 if uart_uuid:
                     await self.client.start_notify(uart_uuid, self._notification_handler)
                     print("UART notifications started.")
-
-                self._run_command(self.settings.get("on_connect_command"))
+                if self.should_run_commands:
+                    self._run_command(self.settings.get("on_connect_command"))
                 return True
         except Exception as e:
             print(f"Connection failed: {e}")
@@ -78,7 +83,7 @@ class Token:
         print(f"Received data: {response.hex()}", flush=True)
 
 
-        if len(self._rx_buffer) >= 32:
+        if len(self._rx_buffer) >= 32 and self._generating_password == False:
             response = bytes(self._rx_buffer[:32])
             self._rx_buffer = self._rx_buffer[32:]
             if self._verify(response):
@@ -115,7 +120,9 @@ class Token:
         """Disconnect from the BLE token and run disconnect command."""
         if self.client and self.client.is_connected:
             await self.client.disconnect()
-            self._run_command(self.settings.get("on_disconnect_command"))
+
+            if self.should_run_commands:
+                self._run_command(self.settings.get("on_disconnect_command"))
             self.client = None
 
     def _run_command(self, command):
@@ -169,9 +176,10 @@ class Token:
         print(f"Ephemeral public key sent: {ephemeral_public_key.hex()}", flush=True)
         return nonce
     
-    async def generate_password(self, password, random_public_key):
+    async def generate_password(self, password):
         if not self.client or not self.client.is_connected:
             print("Not connected to device.")
+            self.is_connected = False
             return None
         
         if not self.is_authenticated:
@@ -180,12 +188,18 @@ class Token:
     
         hashed_password = sha256(password.encode()).digest()[:16]
         uart_rx_uuid = self.settings.get("uart_rx_char_uuid")
-        await self.client.write_gatt_char(uart_rx_uuid, hashed_password + random_public_key)
-        response = bytes(self._rx_buffer)
-        return bytes(self._rx_buffer)
-
-
-        
+        self._generating_password = True
+        await self.client.write_gatt_char(uart_rx_uuid, hashed_password + bytes.fromhex(self.settings.get("random_public_key", "")))
+        await asyncio.sleep(5)  # Wait for response
+        self._generating_password = False
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            salt=b"ble_token_salt",
+            length=32,            # Output key length (32 bytes = 256 bits)
+            iterations=600000,    # High iteration count to slow down attackers
+        )
+        secret = bytes(self._rx_buffer)
+        return kdf.derive(secret)
 
 
     async def monitor_rssi(self):
