@@ -23,6 +23,8 @@ class Token:
         self.is_authenticated = False
         self.should_run_commands = True
         self.is_connected = False
+        self.is_out_of_range = False
+        self.last_rssi = None
         self._rx_buffer = bytearray()
         self._pending_nonce = None
         self._pending_ephemeral_key = None
@@ -38,8 +40,35 @@ class Token:
             }
         with open(self.settings_path, "r") as f:
             return json.load(f)
+    
+    async def direct_connect(self):
+        """Directly connect to the BLE token using the configured address."""
+        address = self.settings.get("device_address")
+        if not address:
+            print("No device address provided or configured.")
+            return False
 
-    async def connect(self, address=None):
+        print(f"Connecting directly (no scan) to device {address}...")
+        self.client = BleakClient(address)
+        try:
+            await self.client.connect()
+            if self.client.is_connected:
+                print(f"Connected to {address}!")
+                self.is_connected = True
+
+                uart_uuid = self.settings.get("uart_tx_char_uuid")
+                if uart_uuid:
+                    await self.client.start_notify(uart_uuid, self._notification_handler)
+                    print("UART notifications started.")
+                if self.should_run_commands:
+                    self._run_command(self.settings.get("on_connect_command"))
+                return True
+        except Exception as e:
+            print(f"Connection failed: {e}")
+
+        return False
+
+    async def scan_connect(self, address=None):
         """Scan for and connect to the BLE token, then start UART notifications."""
         address = address or self.settings.get("device_address")
         if not address:
@@ -73,6 +102,7 @@ class Token:
                 return True
         except Exception as e:
             print(f"Connection failed: {e}")
+            self.is_connected = False
 
         return False
 
@@ -80,18 +110,33 @@ class Token:
         """Callback for receiving data from the BLE token."""
         self._rx_buffer.extend(data)
         response = bytes(self._rx_buffer)
-        print(f"Received data: {response.hex()}", flush=True)
+        # print(f"Received data: {response.hex()}", flush=True)
+        int.from_bytes(response, byteorder='big', signed=True)
 
+        if len(response) == 1: # RSSI update
+            rssi = int.from_bytes(response, byteorder='big', signed=True)
+            self.last_rssi = rssi
+            print(f"Received RSSI update: {rssi} dBm", flush=True)
+            if rssi < self.settings.get("rssi_threshold"):
+                print("RSSI below threshold. Device may be out of range.", flush=True)
+                if self.should_run_commands and not self.is_out_of_range:
+                    self._run_command(self.settings.get("rssi_below_threshold_command"))
+                self.is_out_of_range = True
+            else:
+                self.is_out_of_range = False
 
         if len(self._rx_buffer) >= 32 and self._generating_password == False:
             response = bytes(self._rx_buffer[:32])
             self._rx_buffer = self._rx_buffer[32:]
             if self._verify(response):
                 print("Authentication successful.", flush=True)
+                if self.is_authenticated == False and self.should_run_commands:
+                    self._run_command(self.settings.get("on_authenticate_command"))
                 self.is_authenticated = True
             else:
                 print("Authentication failed.", flush=True)
                 self.is_authenticated = False
+                self.disconnect()
 
     def _verify(self, device_response):
         """Verify the device's signed nonce response."""
@@ -171,7 +216,11 @@ class Token:
 
         uart_rx_uuid = self.settings.get("uart_rx_char_uuid")
         self._rx_buffer.clear()
-        await self.client.write_gatt_char(uart_rx_uuid, nonce + ephemeral_public_key)
+        try:
+            await self.client.write_gatt_char(uart_rx_uuid, nonce + ephemeral_public_key)
+        except Exception as e:
+            print(f"Write failed, probably out of range: {e}")
+            return None
         print(f"Nonce sent: {nonce.hex()}", flush=True)
         print(f"Ephemeral public key sent: {ephemeral_public_key.hex()}", flush=True)
         return nonce
@@ -189,8 +238,9 @@ class Token:
         hashed_password = sha256(password.encode()).digest()[:16]
         uart_rx_uuid = self.settings.get("uart_rx_char_uuid")
         self._generating_password = True
-        await self.client.write_gatt_char(uart_rx_uuid, hashed_password + bytes.fromhex(self.settings.get("random_public_key", "")))
-        await asyncio.sleep(5)  # Wait for response
+        self._rx_buffer.clear()
+        await self.client.write_gatt_char(uart_rx_uuid, hashed_password + bytes.fromhex(self.settings.get("random_public_key", "")), response=False)
+        await asyncio.sleep(2)  # Wait for response
         self._generating_password = False
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
@@ -198,27 +248,33 @@ class Token:
             length=32,            # Output key length (32 bytes = 256 bits)
             iterations=600000,    # High iteration count to slow down attackers
         )
-        secret = bytes(self._rx_buffer)
+        secret = bytes(self._rx_buffer)[1:33] # We need to exclude the RSSI
         return kdf.derive(secret)
-
-
-    async def monitor_rssi(self):
-        """Placeholder for RSSI monitoring logic."""
-        if self.client and self.client.is_connected:
-            # Note: Bleak's get_rssi() behavior varies by platform
-            pass
 
 
 async def main():
     token = Token()
     token.get_public_key()
-    await token.connect()
+    await token.scan_connect()
+
+    # token.should_run_commands = False
+    # await token.send_nonce()
+    # await asyncio.sleep(1)  # Wait for authentication to complete
+    # print(await token.generate_password("test"))
 
     while True:
         if await token.send_nonce() == None:
             print("Failed to send nonce. Device may be disconnected.")
-            await token.connect()
-        await asyncio.sleep(10)
+            if token.client:
+                while token.client.is_connected == False:
+                    print("Attempting to reconnect...")
+                    await token.direct_connect()
+                    await asyncio.sleep(5)
+        if token.is_out_of_range:
+            print("Device is out of range. Waiting...")
+            await asyncio.sleep(15)
+
+        await asyncio.sleep(1)
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -1,4 +1,4 @@
-from ble_token import Token
+from ble_token.ble_token import Token
 import asyncio
 import base64
 
