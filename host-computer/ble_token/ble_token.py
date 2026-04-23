@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+import time
 
 
 
@@ -25,10 +26,15 @@ class Token:
         self.is_connected = False
         self.is_out_of_range = False
         self.last_rssi = None
+        self.beacon_task = None
+        self.last_ping_time = None
+        self.last_secret_expected = None
+        self.last_secret_received = None
         self._rx_buffer = bytearray()
         self._pending_nonce = None
         self._pending_ephemeral_key = None
         self._generating_password = False
+        self.last_ephemeral_public_key = None
 
     def _load_settings(self):
         if not os.path.exists(self.settings_path):
@@ -43,13 +49,16 @@ class Token:
     
     async def direct_connect(self):
         """Directly connect to the BLE token using the configured address."""
+        if self.client and self.client.is_connected:
+            print("Already connected to device.")
+            return True
         address = self.settings.get("device_address")
         if not address:
             print("No device address provided or configured.")
             return False
 
         print(f"Connecting directly (no scan) to device {address}...")
-        self.client = BleakClient(address)
+        self.client = BleakClient(address, disconnected_callback=self._on_disconnect)
         try:
             await self.client.connect()
             if self.client.is_connected:
@@ -86,7 +95,7 @@ class Token:
             return False
 
         print(f"Connecting to {address}...")
-        self.client = BleakClient(device)
+        self.client = BleakClient(device, disconnected_callback=self._on_disconnect)
         try:
             await self.client.connect()
             if self.client.is_connected:
@@ -116,7 +125,7 @@ class Token:
         if len(response) == 1: # RSSI update
             rssi = int.from_bytes(response, byteorder='big', signed=True)
             self.last_rssi = rssi
-            print(f"Received RSSI update: {rssi} dBm", flush=True)
+            # print(f"Received RSSI update: {rssi} dBm", flush=True)
             if rssi < self.settings.get("rssi_threshold"):
                 print("RSSI below threshold. Device may be out of range.", flush=True)
                 if self.should_run_commands and not self.is_out_of_range:
@@ -155,6 +164,9 @@ class Token:
 
         self._pending_nonce = None
         self._pending_ephemeral_key = None
+    
+        self.last_secret_expected = expected.hex()
+        self.last_secret_received = device_response.hex()
 
         print(f"Expected response: {expected.hex()}", flush=True)
         print(f"Device response: {device_response.hex()}", flush=True)
@@ -165,6 +177,8 @@ class Token:
         """Disconnect from the BLE token and run disconnect command."""
         if self.client and self.client.is_connected:
             await self.client.disconnect()
+            self.client = None
+            self.is_connected = False
 
             if self.should_run_commands:
                 self._run_command(self.settings.get("on_disconnect_command"))
@@ -176,6 +190,11 @@ class Token:
                 subprocess.Popen(command, shell=True)
             except Exception as e:
                 print(f"Failed to run command '{command}': {e}")
+    
+    def _on_disconnect(self, client):
+        self.is_connected = False
+        self.is_authenticated = False
+
 
     def get_public_key(self):
         """Return the stored public key."""
@@ -204,6 +223,7 @@ class Token:
     async def send_nonce(self):
         """Generate a random nonce and send it to the device over BLE."""
         if not self.client or not self.client.is_connected:
+            self._run_command(self.settings.get("on_disconnect_command"))
             print("Not connected to device.")
             return None
 
@@ -222,6 +242,8 @@ class Token:
             print(f"Write failed, probably out of range: {e}")
             return None
         print(f"Nonce sent: {nonce.hex()}", flush=True)
+        self.last_ping_time = time.monotonic()
+        self.last_ephemeral_public_key = ephemeral_public_key
         print(f"Ephemeral public key sent: {ephemeral_public_key.hex()}", flush=True)
         return nonce
     
@@ -248,14 +270,14 @@ class Token:
             length=32,            # Output key length (32 bytes = 256 bits)
             iterations=600000,    # High iteration count to slow down attackers
         )
-        secret = bytes(self._rx_buffer)[1:33] # We need to exclude the RSSI
+        secret = bytes.fromhex(self.last_secret_received)
         return kdf.derive(secret)
 
 
 async def main():
     token = Token()
     token.get_public_key()
-    await token.scan_connect()
+    await token.direct_connect()
 
     # token.should_run_commands = False
     # await token.send_nonce()
@@ -273,7 +295,7 @@ async def main():
         if token.is_out_of_range:
             print("Device is out of range. Waiting...")
             await asyncio.sleep(15)
-
+        print(f"LAST RSSI: {token.last_rssi}")
         await asyncio.sleep(1)
 
 if __name__ == "__main__":

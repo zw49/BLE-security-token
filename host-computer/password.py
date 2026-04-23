@@ -12,6 +12,7 @@ async def _get_password(token, password):
         return
     if not token.client or not token.client.is_connected:
         await token.direct_connect()
+    if not token.is_authenticated:
         await token.send_nonce()
         await asyncio.sleep(1)
     

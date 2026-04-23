@@ -8,6 +8,6 @@
     "rssi_below_threshold_command": "notify-send 'Security Token' 'Device Out of Range' --icon=security-low",
     "on_disconnect_command": "notify-send 'Security Token' 'Device Disconnected' --icon=security-low",
     "rssi_threshold": -80,
-    "beacon_interval_seconds": 5,
+    "beacon_interval_seconds": 2,
     "random_public_key": "042b59c1d7df52300710294d12be4b0df8d35891aa972aaea93805f10f01053a6ff9964ee6545613d77f16bedc3c63b2b16bee67e6bddecd194b259eb8f80229ae"
 }

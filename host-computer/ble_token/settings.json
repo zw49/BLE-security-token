@@ -1,5 +1,5 @@
 {
-    "public_key": "04259CA1D7DAE525DF3F7282C6147947C09EBC0B04F9B7D434C313DDED1B459039A98375B7E7DF3CA7303FC8C86110293083A4AF4D892E7E2E39B2E6DFA1BB618C",
+    "public_key": "",
     "device_address": "F6:FD:DA:1D:13:E5",
     "uart_tx_char_uuid": "6e400003-b5a3-f393-e0a9-e50e24dcca9e",
     "uart_rx_char_uuid": "6e400002-b5a3-f393-e0a9-e50e24dcca9e",
@@ -7,7 +7,7 @@
     "on_authenticate_command": "notify-send 'Security Token' 'Authentication Successful' --icon=security-medium",
     "rssi_below_threshold_command": "notify-send 'Security Token' 'Device Out of Range' --icon=security-low",
     "on_disconnect_command": "notify-send 'Security Token' 'Device Disconnected' --icon=security-low",
-    "rssi_threshold": -80,
+    "rssi_threshold": -85,
     "beacon_interval_seconds": 5,
     "random_public_key": "042b59c1d7df52300710294d12be4b0df8d35891aa972aaea93805f10f01053a6ff9964ee6545613d77f16bedc3c63b2b16bee67e6bddecd194b259eb8f80229ae"
 }
