@@ -39,6 +39,24 @@ Required libraries (available in Arduino Library Manager):
     *   `vault.py`: Encrypted vault management.
     *   `settings.json`: Configuration for MAC addresses, RSSI thresholds, and commands.
 
+## ⚙️ Configuration
+
+The `host-computer/settings.json` file controls the behavior of the host application. Most of these can be configured via the **Settings** tab in the Streamlit UI.
+
+| Setting | Description |
+| :--- | :--- |
+| `public_key` | The token's static ECC public key (hex), used for authentication. Retrieved during initial setup. |
+| `device_address` | The BLE MAC address of your nRF52840 token. |
+| `uart_tx_char_uuid` | UUID for the Nordic UART Service (NUS) TX characteristic (host receives). |
+| `uart_rx_char_uuid` | UUID for the Nordic UART Service (NUS) RX characteristic (host sends). |
+| `rssi_threshold` | Signal strength threshold (dBm). If the RSSI drops below this, the "Below Threshold" command is triggered. |
+| `beacon_interval_seconds` | Interval for proximity/heartbeat checks. |
+| `on_connect_command` | Shell command executed immediately upon successful BLE connection. |
+| `on_authenticate_command` | Shell command executed after the host successfully verifies the token's identity. |
+| `on_disconnect_command` | Shell command executed when the BLE connection is lost. |
+| `rssi_below_threshold_command` | Shell command executed when the token is connected but signal strength is too weak (out of range). |
+| `random_public_key` | A secondary public key used specifically for deriving high-entropy passwords. |
+
 ## 🛠️ Setup
 
 1.  **Flash the Token:** Open `nrf52/ble_token/ble_token.ino` in Arduino IDE and flash it to your XIAO nRF52840.
