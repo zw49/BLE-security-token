@@ -1,33 +1,50 @@
-# Proximity-Based Cryptographic Vault with Physical Anti-Forensic Trigger
+# BLE Security Token
 
-This repository contains the source code and hardware specifications for my **Cybersecurity Capstone Project**. The project focuses on bridging the gap between hardware-based authentication and endpoint security through a "Zero Trust" physical proximity model.
+A proximity-based security system that uses a physical BLE token (nRF52840) to automate host security actions and manage encrypted data.
 
----
+## 🚀 Overview
 
-## 🛡️ Project Overview
-The goal of this project is to mitigate the risk of unauthorized physical access to sensitive data when a user steps away from their workstation. It utilizes a **Seeed Studio XIAO nRF52840 (BLE)** microcontroller as a wireless security token. The computer automatically mounts an encrypted data vault when the token is within a specific range and immediately dismounts the vault when the token is removed or the signal is lost.
+This project consists of two main components:
+1.  **Firmware:** C++/Arduino code for a Seeed Studio XIAO nRF52840 that handles secure challenge-response authentication using hardware-accelerated ECC.
+2.  **Host Software:** A Streamlit-based Python application that monitors the token's proximity via RSSI and performs actions like mounting/unmounting a vault or executing custom commands.
 
-## 🗝️ Key Features
-* **RSA Challenge-Response Authentication:** To prevent device spoofing, the host computer sends a random nonce that the BLE token must sign using a **Private RSA Key** stored locally in its flash memory.
-* **Proximity-Based Locking:** The system monitors the Bluetooth signal strength (RSSI) and heartbeat; if the device moves out of range or is disconnected, the vault is locked and dismounted automatically.
-* **Physical "Self-Destruct" Button:** A high-priority anti-forensic feature. When the physical button on the BLE token is pressed, it:
-    1. Sends a "Kill" signal to the host to **shred** the encrypted vault headers.
-    2. **Wipes its own internal memory**, deleting the RSA Private Key to render the vault cryptographically unrecoverable.
+## 🛡️ Key Features
 
+*   **ECC Challenge-Response:** Mutual authentication using secp256r1 (P-256) curves. The host verifies the token's identity before performing sensitive operations.
+*   **Proximity-Based Actions:** Automatically run scripts or lock/unlock your computer when the token moves out of range (RSSI threshold).
+*   **Encrypted Vault:** A secure storage system using AES-256 (EAX mode) and Scrypt for key derivation, integrated into the host software.
+*   **Password Generator:** Generate high-entropy passwords derived from the secure shared secret between the host and token.
+*   **Headless/GUI Modes:** Run as a background service or through the interactive Streamlit dashboard.
 
+## 📦 Dependencies
 
-## 🛠️ Tech Stack
-* **Hardware:** Seeed Studio XIAO nRF52840 Plus, 3.7V LiPo Battery.
-* **Firmware:** C++ (Arduino IDE) utilizing the Adafruit Bluefruit nRF52 library.
-* **Host Software:** Python-based monitoring service using the `bleak` library for BLE and `cryptography` for RSA verification.
-* **Encryption:** Custom AES-256 wrappers or VeraCrypt integration.
+### Host (Python)
+Install via `pip`:
+```bash
+pip install streamlit bleak cryptography pyserial pycryptodome pyperclip
+```
 
-## 📅 Project Milestones
-* **Milestone 1:** Research on RSA implementation and NIST SP 800-88 sanitization standards.
-* **Milestone 2:** Environment setup and establishment of a stable BLE "Heartbeat".
-* **Milestone 3:** Implementation of the RSA signing protocol.
-* **Milestone 4:** Integration of the "Self-Destruct" interrupt logic and secure file erasure.
-* **Milestone 5:** Final testing, range analysis, and technical report submission.
+### Firmware (Arduino)
+Required libraries (available in Arduino Library Manager):
+*   `Adafruit Bluefruit nRF52` (by Adafruit)
+*   `Adafruit_nRFCrypto` (by Adafruit)
+*   `Adafruit_LittleFS` (by Adafruit)
 
----
-*Developed as part of a Cybersecurity Capstone Project, 2026.*
+## 📂 Project Structure
+
+*   `nrf52/ble_token/`: Arduino source code for the security token.
+*   `host-computer/`: Python source code for the host application.
+    *   `app.py`: Main Streamlit entry point.
+    *   `ble_token/`: Core BLE and cryptographic logic.
+    *   `vault.py`: Encrypted vault management.
+    *   `settings.json`: Configuration for MAC addresses, RSSI thresholds, and commands.
+
+## 🛠️ Setup
+
+1.  **Flash the Token:** Open `nrf52/ble_token/ble_token.ino` in Arduino IDE and flash it to your XIAO nRF52840.
+2.  **Retrieve Public Key:** Run `python host-computer/ble_token/ble_token.py` while the device is connected via USB to pair and save the token's public key.
+3.  **Run Host App:**
+    ```bash
+    cd host-computer
+    streamlit run app.py
+    ```

@@ -6,6 +6,8 @@ void setup() {
   Serial.begin(115200);
   unsigned long start = millis();
   while (!Serial && (millis() - start < 3000)) delay(10);
+  // setting up low charging current
+  pinMode(13, OUTPUT);
 
   setup_connections();
   setup_crypto();
@@ -13,6 +15,8 @@ void setup() {
 }
 
 void loop() {
+
+  digitalWrite(13, HIGH);
   // Handle USB serial commands
   if (Serial.available() > 0) {
     String command = Serial.readStringUntil('\n');

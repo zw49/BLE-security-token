@@ -5,9 +5,9 @@
     "uart_rx_char_uuid": "6e400002-b5a3-f393-e0a9-e50e24dcca9e",
     "on_connect_command": "notify-send 'Security Token' 'Device Connected' --icon=security-high",
     "on_authenticate_command": "notify-send 'Security Token' 'Authentication Successful' --icon=security-medium",
-    "rssi_below_threshold_command": "notify-send 'Security Token' 'Device Out of Range' --icon=security-low",
-    "on_disconnect_command": "notify-send 'Security Token' 'Device Disconnected' --icon=security-low",
-    "rssi_threshold": -80,
+    "rssi_below_threshold_command": "systemctl suspend",
+    "on_disconnect_command": "systemctl suspend",
+    "rssi_threshold": -70,
     "beacon_interval_seconds": 2,
     "random_public_key": "042b59c1d7df52300710294d12be4b0df8d35891aa972aaea93805f10f01053a6ff9964ee6545613d77f16bedc3c63b2b16bee67e6bddecd194b259eb8f80229ae"
 }

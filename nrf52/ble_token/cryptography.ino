@@ -198,10 +198,9 @@ void send_signed_nonce(uint8_t* input, uint32_t inputLen) {
   uint8_t* ephemeralPubRaw = input + 16;
 
   Serial.print("NONCE: ");
-  for (int i = 0; i < 16; i++) {
-    Serial.print(nonce[i], HEX);
-  }
-  Serial.println();
+  print_hex(nonce, 16);
+  Serial.print("EPHEMERAL_PUB_KEY: ");
+  print_hex(ephemeralPubRaw, 64);
 
   // Init crypto
   if (!nRFCrypto.begin()) return;
@@ -237,6 +236,9 @@ void send_signed_nonce(uint8_t* input, uint32_t inputLen) {
     }
   }
 
+  Serial.print("PRIV: ");
+  print_hex(rawPriv, 64);
+
   // Parse host's ephemeral public key
   nRFCrypto_ECC_PublicKey ephemeralPub;
   ephemeralPub.begin(CRYS_ECPKI_DomainID_secp256r1);
@@ -250,6 +252,8 @@ void send_signed_nonce(uint8_t* input, uint32_t inputLen) {
   uint8_t sharedSecret[32];
   uint32_t secretLen = nRFCrypto_ECC::SVDP_DH(privKey, ephemeralPub, sharedSecret, sizeof(sharedSecret));
   ecc.end();
+  Serial.print("SECRET: ");
+  print_hex(sharedSecret, 32);
 
   if (secretLen == 0) {
     Serial.println("Error: ECDH failed.");
@@ -263,12 +267,16 @@ void send_signed_nonce(uint8_t* input, uint32_t inputLen) {
   hash.update(nonce, 16);
   uint8_t digest[32];
   hash.end(digest);
+  // int8_t rssi = Bluefruit.Connection(Bluefruit.connHandle())->getRssi();
+  // Serial.println(rssi);
 
   Serial.print("Signed nonce: ");
   print_hex(digest, 32);
 
+
   // Send hash back over BLE
   bleuart.write(digest, 32);
+  send_rssi();
 }
 
 // Helper function to print hex values cleanly

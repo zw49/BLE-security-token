@@ -24,11 +24,12 @@ void startAdv(void) {
   Bluefruit.Advertising.restartOnDisconnect(true);
   Bluefruit.Advertising.setInterval(32, 244);  // in unit of 0.625 ms
   Bluefruit.Advertising.setFastTimeout(30);    // number of seconds in fast mode
-  Bluefruit.Advertising.start(0);              // 0 = Don't stop advertising after n seconds
+  Bluefruit.Advertising.start(30);              // 0 = Don't stop advertising after n seconds
 }
 
 void setup_connections() {
-
+  Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
+  Bluefruit.configPrphConn(247, BLE_GAP_EVENT_LENGTH_DEFAULT, 16, 16);
   Bluefruit.begin();
   Bluefruit.setName("SecurityToken_XIAO");
 
@@ -40,6 +41,7 @@ void setup_connections() {
 void connect_callback(uint16_t conn_handle) {
   // Get the reference to current connection
   BLEConnection* connection = Bluefruit.Connection(conn_handle);
+  Bluefruit.Connection(conn_handle)->monitorRssi();
 
   char central_name[32] = { 0 };
   connection->getPeerName(central_name, sizeof(central_name));
@@ -55,4 +57,10 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
   Serial.println();
   Serial.print("Disconnected, reason = 0x");
   Serial.println(reason, HEX);
+}
+
+void send_rssi() {
+  int8_t rssi = Bluefruit.Connection(Bluefruit.connHandle())->getRssi();
+  Serial.println(rssi);
+  bleuart.write(rssi);
 }
